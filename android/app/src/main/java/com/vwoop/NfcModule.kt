@@ -8,35 +8,27 @@ import android.nfc.cardemulation.CardEmulation
 import android.util.Log
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.facebook.react.bridge.ActivityEventListener
 
-class NfcModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+class NfcModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext), ActivityEventListener {
     private val TAG = "NfcModule"
     private var nfcAdapter: NfcAdapter? = null
     private var cardEmulation: CardEmulation? = null
     private var isHceEnabled = false
-    private var isAppActive = false
 
     init {
         val nfcManager = reactContext.getSystemService(Activity.NFC_SERVICE) as NfcManager
         nfcAdapter = nfcManager.defaultAdapter
         cardEmulation = CardEmulation.getInstance(nfcAdapter)
-        
-        // Register for app state changes
-        reactContext.addActivityEventListener(object : BaseActivityEventListener() {
-            override fun onActivityResumed(activity: Activity) {
-                isAppActive = true
-                Log.d(TAG, "App became active in NfcModule")
-            }
+        reactContext.addActivityEventListener(this)
+    }
 
-            override fun onActivityPaused(activity: Activity) {
-                isAppActive = false
-                Log.d(TAG, "App became inactive in NfcModule")
-                // Ensure HCE is disabled when app goes to background
-                if (isHceEnabled) {
-                    toggleHceInternal(false)
-                }
-            }
-        })
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+        // Not used in this module
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        // Handle new intents if needed
     }
 
     override fun getName() = "NfcModule"
@@ -53,51 +45,37 @@ class NfcModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaMod
 
     @ReactMethod
     fun toggleHce(promise: Promise) {
-        if (!isAppActive) {
-            promise.reject("ERROR", "Cannot toggle HCE when app is not active")
-            return
-        }
-
         try {
-            toggleHceInternal(!isHceEnabled)
-            promise.resolve(isHceEnabled)
+            if (!isHceEnabled) {
+                // Enable HCE
+                val intent = Intent(reactApplicationContext, HostCardEmulationService::class.java)
+                reactApplicationContext.startService(intent)
+                isHceEnabled = true
+                sendEvent("onHceStateChanged", true)
+                promise.resolve(true)
+            } else {
+                // Disable HCE
+                val intent = Intent(reactApplicationContext, HostCardEmulationService::class.java)
+                reactApplicationContext.stopService(intent)
+                isHceEnabled = false
+                sendEvent("onHceStateChanged", false)
+                promise.resolve(false)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling HCE", e)
             promise.reject("ERROR", e.message)
         }
     }
 
-    private fun toggleHceInternal(enable: Boolean) {
-        try {
-            val intent = Intent(reactApplicationContext, HostCardEmulationService::class.java)
-            if (enable) {
-                reactApplicationContext.startService(intent)
-                isHceEnabled = true
-                sendEvent("onHceStateChanged", true)
-            } else {
-                reactApplicationContext.stopService(intent)
-                isHceEnabled = false
-                sendEvent("onHceStateChanged", false)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in toggleHceInternal", e)
-            throw e
-        }
-    }
-
     @ReactMethod
     fun isHceEnabled(promise: Promise) {
-        promise.resolve(isHceEnabled && isAppActive)
+        promise.resolve(isHceEnabled)
     }
 
     private fun sendEvent(eventName: String, data: Any) {
-        try {
-            reactApplicationContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit(eventName, data)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error sending event", e)
-        }
+        reactApplicationContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit(eventName, data)
     }
 
     @ReactMethod
