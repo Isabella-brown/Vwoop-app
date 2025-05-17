@@ -11,13 +11,9 @@ import {
   NativeModules,
   Platform,
 } from 'react-native';
-import Sound from 'react-native-sound';
 
 const {width, height} = Dimensions.get('window');
 const {NfcModule} = NativeModules;
-
-// Enable playback in silence mode
-Sound.setCategory('Playback');
 
 const VwoopPage: React.FC = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
@@ -27,49 +23,45 @@ const VwoopPage: React.FC = () => {
   const rippleAnim2 = useRef(new Animated.Value(0)).current;
   const rippleAnim3 = useRef(new Animated.Value(0)).current;
   const [isNfcSupported, setIsNfcSupported] = useState(false);
+  const [isNfcAvailable, setIsNfcAvailable] = useState(false);
   const [isNfcEnabled, setIsNfcEnabled] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const rippleSound = useRef<Sound | null>(null);
 
   useEffect(() => {
-    // Initialize sound
-    rippleSound.current = new Sound('ripple_audio.mp3', Sound.MAIN_BUNDLE, (error) => {
-      if (error) {
-        console.log('Failed to load sound', error);
-        return;
-      }
-    });
-
     // Check NFC support and status
-    if (Platform.OS === 'android') {
+    if (Platform.OS === 'android' && NfcModule) {
       NfcModule.isNfcSupported().then((supported: boolean) => {
         setIsNfcSupported(supported);
+        setIsNfcAvailable(supported);
         if (supported) {
           NfcModule.isNfcEnabled().then((enabled: boolean) => {
             setIsNfcEnabled(enabled);
           });
         }
+      }).catch((error: any) => {
+        console.log('NFC support check failed:', error);
+        setIsNfcSupported(false);
+        setIsNfcAvailable(false);
       });
+    } else {
+      setIsNfcSupported(false);
+      setIsNfcAvailable(false);
     }
 
-    // Set up event listeners
-    const eventEmitter = new NativeEventEmitter(NfcModule);
-    const nfcDiscoverySubscription = eventEmitter.addListener(
-      'onNfcDiscovered',
-      () => {
-        // Start ripple animation when NFC is discovered
-        startRippleAnimation();
-        setIsConnected(true);
-        // Play sound effect
-        rippleSound.current?.play((success) => {
-          if (!success) {
-            console.log('Sound playback failed');
-          }
-        });
-        // Reset connection state after animation
-        setTimeout(() => setIsConnected(false), 2000);
-      },
-    );
+    let nfcDiscoverySubscription: { remove: () => void } | null = null;
+    if (Platform.OS === 'android' && NfcModule) {
+      const eventEmitter = new NativeEventEmitter(NfcModule);
+      nfcDiscoverySubscription = eventEmitter.addListener(
+        'onNfcDiscovered',
+        () => {
+          // Start ripple animation when NFC is discovered
+          startRippleAnimation();
+          setIsConnected(true);
+          // Reset connection state after animation
+          setTimeout(() => setIsConnected(false), 2000);
+        },
+      );
+    }
 
     // Create pulse animation (background circle)
     const pulseAnimation = Animated.sequence([
@@ -107,9 +99,9 @@ const VwoopPage: React.FC = () => {
       rippleAnim1.setValue(0);
       rippleAnim2.setValue(0);
       rippleAnim3.setValue(0);
-      nfcDiscoverySubscription.remove();
-      // Release sound resource
-      rippleSound.current?.release();
+      if (nfcDiscoverySubscription) {
+        nfcDiscoverySubscription.remove();
+      }
     };
   }, [pulseAnim, rotateAnim, rippleAnim1, rippleAnim2, rippleAnim3]);
 
@@ -199,7 +191,9 @@ const VwoopPage: React.FC = () => {
         <Text style={styles.subtitle}>
           {isConnected
             ? 'Connected!'
-            : 'Hold your phone near another user\'s phone to connect'}
+            : isNfcAvailable
+            ? 'Hold your phone near another user\'s phone to connect'
+            : 'NFC is not available on this device.'}
         </Text>
 
         <View style={styles.animationContainer}>
@@ -217,10 +211,15 @@ const VwoopPage: React.FC = () => {
         <Text style={styles.instruction}>
           {isConnected
             ? 'Connection successful!'
-            : 'Ready to connect - Hold near another phone to exchange contact information'}
+            : isNfcAvailable
+            ? 'Ready to connect - Hold near another phone to exchange contact information'
+            : 'NFC is not available on this device.'}
         </Text>
         {!isNfcEnabled && isNfcSupported && (
           <Text style={styles.warning}>Please enable NFC in your device settings</Text>
+        )}
+        {!isNfcAvailable && Platform.OS === 'android' && (
+          <Text style={styles.warning}>NFC is not supported on this device.</Text>
         )}
       </View>
     </View>
