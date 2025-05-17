@@ -5,7 +5,7 @@
  * @format
  */
 
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {
   StatusBar,
   StyleSheet,
@@ -17,51 +17,40 @@ import {
   Alert,
   TouchableOpacity,
   Text,
+  RefreshControl,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import EventCard from './components/EventCard';
 import Account from './components/Account';
 import VwoopPage from './components/VwoopPage';
 import MenuBar, {Screen} from './components/MenuBar';
+import {generateEvents, GeneratedEvent} from './services/eventGeneration';
 
 const {width} = Dimensions.get('window');
 
-// Sample event data
-const sampleEvents = [
-  {
-    id: '1',
-    title: 'Community Garden Cleanup',
-    date: 'Saturday, March 23, 2024 • 10:00 AM',
-    location: 'Central Park Community Garden',
-    description: 'Join us for a morning of gardening and community building. We\'ll be planting spring vegetables and cleaning up the garden beds. Tools and refreshments provided!',
-    imageUrl: 'https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800',
-    currentAttendees: 12,
-    maxAttendees: 20,
-  },
-  {
-    id: '2',
-    title: 'Local Art Exhibition',
-    date: 'Sunday, March 24, 2024 • 2:00 PM',
-    location: 'Downtown Art Gallery',
-    description: 'Experience the work of local artists in our monthly exhibition. Meet the artists, enjoy live music, and participate in interactive art workshops.',
-    imageUrl: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800',
-    currentAttendees: 45,
-    maxAttendees: 50,
-  },
-  {
-    id: '3',
-    title: 'Neighborhood Book Club',
-    date: 'Tuesday, March 26, 2024 • 7:00 PM',
-    location: 'Community Library',
-    description: 'This month we\'re discussing "The Midnight Library" by Matt Haig. New members welcome! Light refreshments will be served.',
-    imageUrl: 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=800',
-    currentAttendees: 8,
-    maxAttendees: 15,
-  },
-];
-
 function App(): React.JSX.Element {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
+  const [events, setEvents] = useState<GeneratedEvent[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadEvents = async () => {
+    try {
+      const newEvents = await generateEvents(3);
+      setEvents(newEvents);
+    } catch (error) {
+      console.error('Failed to generate events:', error);
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadEvents();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
 
   const handleSignUp = (eventId: string) => {
     Alert.alert(
@@ -76,19 +65,16 @@ function App(): React.JSX.Element {
       case 'home':
         return (
           <ScrollView
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
             style={styles.content}
             contentContainerStyle={styles.contentContainer}
             showsVerticalScrollIndicator={false}>
-            {sampleEvents.map(event => (
+            {events.map(event => (
               <EventCard
                 key={event.id}
-                title={event.title}
-                date={event.date}
-                location={event.location}
-                description={event.description}
-                imageUrl={event.imageUrl}
-                currentAttendees={event.currentAttendees}
-                maxAttendees={event.maxAttendees}
+                {...event}
                 onSignUp={() => handleSignUp(event.id)}
               />
             ))}
