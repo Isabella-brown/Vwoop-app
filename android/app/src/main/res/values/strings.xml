@@ -1,3 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Vwoop</string>
+    <string name="service_name">Vwoop NFC Service</string>
+    <string name="card_title">Vwoop Card</string>
 </resources>
