@@ -18,7 +18,6 @@ import {
   TouchableOpacity,
   Text,
 } from 'react-native';
-import LinearGradient from 'react-native-linear-gradient';
 import EventCard from './components/EventCard';
 import Account from './components/Account';
 import VwoopPage from './components/VwoopPage';
@@ -104,15 +103,13 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <LinearGradient
-        colors={['#6B46C1', '#805AD5', '#9F7AEA']}
-        style={styles.gradient}>
+      <View style={styles.background}>
         {renderContent()}
         <MenuBar
           currentScreen={currentScreen}
           onScreenChange={setCurrentScreen}
         />
-      </LinearGradient>
+      </View>
     </SafeAreaView>
   );
 }
@@ -121,8 +118,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  gradient: {
+  background: {
     flex: 1,
+    backgroundColor: '#805AD5', // Using the middle color from the previous gradient
   },
   content: {
     flex: 1,
