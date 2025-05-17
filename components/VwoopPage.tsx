@@ -1,4 +1,4 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {
   View,
   Text,
@@ -7,36 +7,91 @@ import {
   Easing,
   Dimensions,
   TouchableOpacity,
+  NativeEventEmitter,
+  NativeModules,
+  Platform,
 } from 'react-native';
+import Sound from 'react-native-sound';
 
 const {width, height} = Dimensions.get('window');
+const {NfcModule} = NativeModules;
+
+// Enable playback in silence mode
+Sound.setCategory('Playback');
 
 const VwoopPage: React.FC = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
+  // Create multiple ripple animations
+  const rippleAnim1 = useRef(new Animated.Value(0)).current;
+  const rippleAnim2 = useRef(new Animated.Value(0)).current;
+  const rippleAnim3 = useRef(new Animated.Value(0)).current;
+  const [isNfcSupported, setIsNfcSupported] = useState(false);
+  const [isNfcEnabled, setIsNfcEnabled] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  const rippleSound = useRef<Sound | null>(null);
 
   useEffect(() => {
-    // Create pulse animation
+    // Initialize sound
+    rippleSound.current = new Sound('ripple_audio.mp3', Sound.MAIN_BUNDLE, (error) => {
+      if (error) {
+        console.log('Failed to load sound', error);
+        return;
+      }
+    });
+
+    // Check NFC support and status
+    if (Platform.OS === 'android') {
+      NfcModule.isNfcSupported().then((supported: boolean) => {
+        setIsNfcSupported(supported);
+        if (supported) {
+          NfcModule.isNfcEnabled().then((enabled: boolean) => {
+            setIsNfcEnabled(enabled);
+          });
+        }
+      });
+    }
+
+    // Set up event listeners
+    const eventEmitter = new NativeEventEmitter(NfcModule);
+    const nfcDiscoverySubscription = eventEmitter.addListener(
+      'onNfcDiscovered',
+      () => {
+        // Start ripple animation when NFC is discovered
+        startRippleAnimation();
+        setIsConnected(true);
+        // Play sound effect
+        rippleSound.current?.play((success) => {
+          if (!success) {
+            console.log('Sound playback failed');
+          }
+        });
+        // Reset connection state after animation
+        setTimeout(() => setIsConnected(false), 2000);
+      },
+    );
+
+    // Create pulse animation (background circle)
     const pulseAnimation = Animated.sequence([
       Animated.timing(pulseAnim, {
         toValue: 1,
-        duration: 1500,
+        duration: 2000,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
       Animated.timing(pulseAnim, {
         toValue: 0,
-        duration: 1500,
+        duration: 2000,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
     ]);
 
-    // Create rotation animation
+    // Create rotation animation (outer circle)
     const rotateAnimation = Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
-        duration: 3000,
+        duration: 4000,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
@@ -49,21 +104,60 @@ const VwoopPage: React.FC = () => {
     return () => {
       pulseAnim.setValue(0);
       rotateAnim.setValue(0);
+      rippleAnim1.setValue(0);
+      rippleAnim2.setValue(0);
+      rippleAnim3.setValue(0);
+      nfcDiscoverySubscription.remove();
+      // Release sound resource
+      rippleSound.current?.release();
     };
-  }, [pulseAnim, rotateAnim]);
+  }, [pulseAnim, rotateAnim, rippleAnim1, rippleAnim2, rippleAnim3]);
+
+  const startRippleAnimation = () => {
+    // Reset all ripple animations
+    rippleAnim1.setValue(0);
+    rippleAnim2.setValue(0);
+    rippleAnim3.setValue(0);
+
+    // Create ripple animations with different delays
+    const createRippleAnimation = (anim: Animated.Value, delay: number) => {
+      return Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 1000,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(anim, {
+          toValue: 0,
+          duration: 500,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]);
+    };
+
+    // Start all ripple animations
+    Animated.parallel([
+      createRippleAnimation(rippleAnim1, 0),
+      createRippleAnimation(rippleAnim2, 200),
+      createRippleAnimation(rippleAnim3, 400),
+    ]).start();
+  };
 
   const pulseStyle = {
     transform: [
       {
         scale: pulseAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [1, 1.2],
+          outputRange: [1, 1.3],
         }),
       },
     ],
     opacity: pulseAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.5, 1],
+      outputRange: [0.3, 0.6],
     }),
   };
 
@@ -78,27 +172,56 @@ const VwoopPage: React.FC = () => {
     ],
   };
 
+  // Create ripple styles with different scales and opacities
+  const createRippleStyle = (anim: Animated.Value, scaleRange: [number, number], opacityRange: [number, number, number]) => ({
+    transform: [
+      {
+        scale: anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: scaleRange,
+        }),
+      },
+    ],
+    opacity: anim.interpolate({
+      inputRange: [0, 0.3, 1],
+      outputRange: opacityRange,
+    }),
+  });
+
+  const rippleStyle1 = createRippleStyle(rippleAnim1, [1, 2.2], [0.8, 0.5, 0]);
+  const rippleStyle2 = createRippleStyle(rippleAnim2, [1, 2.4], [0.7, 0.4, 0]);
+  const rippleStyle3 = createRippleStyle(rippleAnim3, [1, 2.6], [0.6, 0.3, 0]);
+
   return (
     <View style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Vwoop!</Text>
         <Text style={styles.subtitle}>
-          Touch your phone with another user to connect
+          {isConnected
+            ? 'Connected!'
+            : 'Hold your phone near another user\'s phone to connect'}
         </Text>
 
         <View style={styles.animationContainer}>
           <Animated.View style={[styles.pulseCircle, pulseStyle]} />
+          <Animated.View style={[styles.rippleCircle, rippleStyle1]} />
+          <Animated.View style={[styles.rippleCircle, rippleStyle2]} />
+          <Animated.View style={[styles.rippleCircle, rippleStyle3]} />
           <Animated.View style={[styles.rotatingCircle, rotateStyle]}>
-            <View style={styles.innerCircle}>
+            <View style={[styles.innerCircle, isConnected && styles.connectedInnerCircle]}>
               <Text style={styles.vwoopText}>V</Text>
             </View>
           </Animated.View>
         </View>
 
         <Text style={styles.instruction}>
-          Hold your phone near another user's phone to exchange contact
-          information
+          {isConnected
+            ? 'Connection successful!'
+            : 'Ready to connect - Hold near another phone to exchange contact information'}
         </Text>
+        {!isNfcEnabled && isNfcSupported && (
+          <Text style={styles.warning}>Please enable NFC in your device settings</Text>
+        )}
       </View>
     </View>
   );
@@ -141,7 +264,16 @@ const styles = StyleSheet.create({
     borderRadius: width * 0.3,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  rippleCircle: {
+    position: 'absolute',
+    width: width * 0.6,
+    height: width * 0.6,
+    borderRadius: width * 0.3,
+    backgroundColor: 'rgba(128, 90, 213, 0.2)',
+    borderWidth: 2,
+    borderColor: 'rgba(128, 90, 213, 0.6)',
   },
   rotatingCircle: {
     width: width * 0.4,
@@ -161,6 +293,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  connectedInnerCircle: {
+    backgroundColor: '#6B46C1',
+    borderWidth: 2,
+    borderColor: '#9F7AEA',
+    transform: [{scale: 1.1}],
+  },
   vwoopText: {
     fontSize: 40,
     fontWeight: 'bold',
@@ -172,6 +310,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: width * 0.8,
     lineHeight: 24,
+  },
+  warning: {
+    fontSize: 14,
+    color: '#FC8181',
+    textAlign: 'center',
+    marginTop: 16,
   },
 });
 
