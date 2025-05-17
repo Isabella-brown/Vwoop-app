@@ -9,14 +9,10 @@ import React, {useState, useEffect} from 'react';
 import {
   StatusBar,
   StyleSheet,
-  View,
-  Image,
   Dimensions,
   SafeAreaView,
   ScrollView,
   Alert,
-  TouchableOpacity,
-  Text,
   RefreshControl,
 } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
@@ -27,6 +23,8 @@ import MenuBar, {Screen} from './components/MenuBar';
 import {generateEvents, GeneratedEvent} from './services/eventGeneration';
 
 const {width} = Dimensions.get('window');
+
+
 
 function App(): React.JSX.Element {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
@@ -52,7 +50,7 @@ function App(): React.JSX.Element {
     loadEvents();
   }, []);
 
-  const handleSignUp = (eventId: string) => {
+  const handleSignUp = () => {
     Alert.alert(
       'Sign Up Successful',
       'You have been registered for this event!',
@@ -75,7 +73,7 @@ function App(): React.JSX.Element {
               <EventCard
                 key={event.id}
                 {...event}
-                onSignUp={() => handleSignUp(event.id)}
+                onSignUp={() => handleSignUp()}
               />
             ))}
           </ScrollView>

@@ -4,11 +4,9 @@ import {
   Text,
   Image,
   StyleSheet,
-  TouchableOpacity,
-  Dimensions,
+  TouchableOpacity
 } from 'react-native';
 
-const {width} = Dimensions.get('window');
 
 interface EventCardProps {
   title: string;
