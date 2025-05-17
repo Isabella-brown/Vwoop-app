@@ -25,24 +25,47 @@ const VwoopPage: React.FC = () => {
   const [isNfcSupported, setIsNfcSupported] = useState(false);
   const [isNfcEnabled, setIsNfcEnabled] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [isSoundLoaded, setIsSoundLoaded] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    // Initialize sound
-    const loadSound = async () => {
+    // Initialize audio
+    const setupAudio = async () => {
       try {
+        // First set up audio mode
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+          shouldDuckAndroid: true,
+        });
+
+        // Then load sound
         const { sound } = await Audio.Sound.createAsync(
           require('../assets/audio/ripple_audio.mp3'),
-          { shouldPlay: false }
+          { shouldPlay: false },
+          (status) => {
+            console.log('Sound status:', status);
+          }
         );
-        soundRef.current = sound;
-        console.log('Sound loaded successfully');
+
+        if (isMounted.current) {
+          soundRef.current = sound;
+          setIsSoundLoaded(true);
+          console.log('Sound loaded successfully');
+        } else {
+          // If component unmounted while loading, unload the sound
+          sound.unloadAsync();
+        }
       } catch (error) {
-        console.log('Failed to load sound', error);
+        console.log('Failed to setup audio:', error);
+        if (isMounted.current) {
+          setIsSoundLoaded(false);
+        }
       }
     };
 
-    loadSound();
+    setupAudio();
 
     // Check NFC support and status
     if (Platform.OS === 'android') {
@@ -65,14 +88,14 @@ const VwoopPage: React.FC = () => {
         startRippleAnimation();
         setIsConnected(true);
         
-        // Play sound effect
-        try {
-          if (soundRef.current) {
+        // Play sound effect if loaded
+        if (isSoundLoaded && soundRef.current) {
+          try {
             await soundRef.current.setPositionAsync(0);
             await soundRef.current.playAsync();
+          } catch (error) {
+            console.log('Failed to play sound:', error);
           }
-        } catch (error) {
-          console.log('Failed to play sound', error);
         }
         
         // Reset connection state after animation
@@ -112,6 +135,7 @@ const VwoopPage: React.FC = () => {
 
     return () => {
       // Cleanup
+      isMounted.current = false;
       if (soundRef.current) {
         soundRef.current.unloadAsync();
       }
