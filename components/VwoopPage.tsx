@@ -11,6 +11,7 @@ import {
   NativeModules,
   Platform,
 } from 'react-native';
+// @ts-ignore
 import Sound from 'react-native-sound';
 
 const {width, height} = Dimensions.get('window');
@@ -33,11 +34,15 @@ const VwoopPage: React.FC = () => {
 
   useEffect(() => {
     // Initialize sound
-    rippleSound.current = new Sound('ripple_audio.mp3', Sound.MAIN_BUNDLE, (error) => {
+    rippleSound.current = new Sound('ripple_audio.mp3', Platform.select({
+      ios: Sound.MAIN_BUNDLE,
+      android: Sound.DOCUMENT, // For Android, we'll use the assets directory
+    }), (error: Error | null) => {
       if (error) {
         console.log('Failed to load sound', error);
         return;
       }
+      console.log('Sound loaded successfully');
     });
 
     // Check NFC support and status
@@ -60,12 +65,18 @@ const VwoopPage: React.FC = () => {
         // Start ripple animation when NFC is discovered
         startRippleAnimation();
         setIsConnected(true);
-        // Play sound effect
-        rippleSound.current?.play((success) => {
-          if (!success) {
-            console.log('Sound playback failed');
-          }
-        });
+        
+        // Play sound effect with proper error handling
+        if (rippleSound.current) {
+          rippleSound.current.play((success: boolean) => {
+            if (!success) {
+              console.log('Sound playback failed');
+            }
+          });
+        } else {
+          console.log('Sound not initialized');
+        }
+        
         // Reset connection state after animation
         setTimeout(() => setIsConnected(false), 2000);
       },
@@ -284,6 +295,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'rgba(255, 255, 255, 0.5)',
+    overflow: 'hidden',
   },
   innerCircle: {
     width: width * 0.3,
@@ -292,17 +304,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#805AD5',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   connectedInnerCircle: {
     backgroundColor: '#6B46C1',
     borderWidth: 2,
     borderColor: '#9F7AEA',
     transform: [{scale: 1.1}],
+    overflow: 'hidden',
   },
   vwoopText: {
     fontSize: 40,
     fontWeight: 'bold',
     color: 'white',
+    textAlign: 'center',
+    textAlignVertical: 'center',
   },
   instruction: {
     fontSize: 16,
