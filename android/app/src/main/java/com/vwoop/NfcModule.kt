@@ -13,15 +13,30 @@ class NfcModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaMod
     private val TAG = "NfcModule"
     private var nfcAdapter: NfcAdapter? = null
     private var cardEmulation: CardEmulation? = null
+    private var isHceEnabled = false
+    private var isAppActive = false
 
     init {
         val nfcManager = reactContext.getSystemService(Activity.NFC_SERVICE) as NfcManager
         nfcAdapter = nfcManager.defaultAdapter
         cardEmulation = CardEmulation.getInstance(nfcAdapter)
         
-        // Start HCE service by default
-        val intent = Intent(reactApplicationContext, HostCardEmulationService::class.java)
-        reactApplicationContext.startService(intent)
+        // Register for app state changes
+        reactContext.addActivityEventListener(object : BaseActivityEventListener() {
+            override fun onActivityResumed(activity: Activity) {
+                isAppActive = true
+                Log.d(TAG, "App became active in NfcModule")
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                isAppActive = false
+                Log.d(TAG, "App became inactive in NfcModule")
+                // Ensure HCE is disabled when app goes to background
+                if (isHceEnabled) {
+                    toggleHceInternal(false)
+                }
+            }
+        })
     }
 
     override fun getName() = "NfcModule"
@@ -36,10 +51,53 @@ class NfcModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaMod
         promise.resolve(nfcAdapter?.isEnabled ?: false)
     }
 
+    @ReactMethod
+    fun toggleHce(promise: Promise) {
+        if (!isAppActive) {
+            promise.reject("ERROR", "Cannot toggle HCE when app is not active")
+            return
+        }
+
+        try {
+            toggleHceInternal(!isHceEnabled)
+            promise.resolve(isHceEnabled)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling HCE", e)
+            promise.reject("ERROR", e.message)
+        }
+    }
+
+    private fun toggleHceInternal(enable: Boolean) {
+        try {
+            val intent = Intent(reactApplicationContext, HostCardEmulationService::class.java)
+            if (enable) {
+                reactApplicationContext.startService(intent)
+                isHceEnabled = true
+                sendEvent("onHceStateChanged", true)
+            } else {
+                reactApplicationContext.stopService(intent)
+                isHceEnabled = false
+                sendEvent("onHceStateChanged", false)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in toggleHceInternal", e)
+            throw e
+        }
+    }
+
+    @ReactMethod
+    fun isHceEnabled(promise: Promise) {
+        promise.resolve(isHceEnabled && isAppActive)
+    }
+
     private fun sendEvent(eventName: String, data: Any) {
-        reactApplicationContext
-            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            .emit(eventName, data)
+        try {
+            reactApplicationContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                .emit(eventName, data)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending event", e)
+        }
     }
 
     @ReactMethod

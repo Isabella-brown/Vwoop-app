@@ -10,36 +10,24 @@ import {
   NativeEventEmitter,
   NativeModules,
   Platform,
+  AppState,
 } from 'react-native';
-import Sound from 'react-native-sound';
 
 const {width, height} = Dimensions.get('window');
 const {NfcModule} = NativeModules;
 
-// Enable playback in silence mode
-Sound.setCategory('Playback');
-
 const VwoopPage: React.FC = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  // Create multiple ripple animations
-  const rippleAnim1 = useRef(new Animated.Value(0)).current;
-  const rippleAnim2 = useRef(new Animated.Value(0)).current;
-  const rippleAnim3 = useRef(new Animated.Value(0)).current;
+  const rippleAnim = useRef(new Animated.Value(0)).current;
+  const [isHceEnabled, setIsHceEnabled] = useState(false);
   const [isNfcSupported, setIsNfcSupported] = useState(false);
   const [isNfcEnabled, setIsNfcEnabled] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
-  const rippleSound = useRef<Sound | null>(null);
+  const [isAppActive, setIsAppActive] = useState(true);
+  const [lastHceCommand, setLastHceCommand] = useState<string | null>(null);
+  const [lastHceDeactivation, setLastHceDeactivation] = useState<number | null>(null);
 
   useEffect(() => {
-    // Initialize sound
-    rippleSound.current = new Sound('ripple_audio.mp3', Sound.MAIN_BUNDLE, (error) => {
-      if (error) {
-        console.log('Failed to load sound', error);
-        return;
-      }
-    });
-
     // Check NFC support and status
     if (Platform.OS === 'android') {
       NfcModule.isNfcSupported().then((supported: boolean) => {
@@ -54,44 +42,67 @@ const VwoopPage: React.FC = () => {
 
     // Set up event listeners
     const eventEmitter = new NativeEventEmitter(NfcModule);
-    const nfcDiscoverySubscription = eventEmitter.addListener(
-      'onNfcDiscovered',
-      () => {
-        // Start ripple animation when NFC is discovered
+    const subscriptions = [
+      // HCE state changes
+      eventEmitter.addListener('onHceStateChanged', (enabled: boolean) => {
+        console.log('HCE state changed:', enabled);
+        setIsHceEnabled(enabled);
+        if (enabled) {
+          startRippleAnimation();
+        }
+      }),
+      // App state changes from native
+      eventEmitter.addListener('onAppStateChanged', (active: boolean) => {
+        console.log('App state changed from native:', active);
+        setIsAppActive(active);
+        if (!active && isHceEnabled) {
+          // HCE will be automatically disabled by native code
+          setIsHceEnabled(false);
+        }
+      }),
+      // HCE command received
+      eventEmitter.addListener('onHceCommandReceived', (command: string) => {
+        console.log('HCE command received:', command);
+        setLastHceCommand(command);
+        // Start ripple animation on command received
         startRippleAnimation();
-        setIsConnected(true);
-        // Play sound effect
-        rippleSound.current?.play((success) => {
-          if (!success) {
-            console.log('Sound playback failed');
-          }
-        });
-        // Reset connection state after animation
-        setTimeout(() => setIsConnected(false), 2000);
-      },
-    );
+      }),
+      // HCE deactivated
+      eventEmitter.addListener('onHceDeactivated', (reason: number) => {
+        console.log('HCE deactivated:', reason);
+        setLastHceDeactivation(reason);
+        setIsHceEnabled(false);
+      }),
+    ];
 
-    // Create pulse animation (background circle)
+    // Set up AppState listener for React Native app state
+    const appStateSubscription = AppState.addEventListener('change', nextAppState => {
+      const isActive = nextAppState === 'active';
+      console.log('App state changed from RN:', nextAppState);
+      setIsAppActive(isActive);
+    });
+
+    // Create pulse animation
     const pulseAnimation = Animated.sequence([
       Animated.timing(pulseAnim, {
         toValue: 1,
-        duration: 2000,
+        duration: 1500,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
       Animated.timing(pulseAnim, {
         toValue: 0,
-        duration: 2000,
+        duration: 1500,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
     ]);
 
-    // Create rotation animation (outer circle)
+    // Create rotation animation
     const rotateAnimation = Animated.loop(
       Animated.timing(rotateAnim, {
         toValue: 1,
-        duration: 4000,
+        duration: 3000,
         easing: Easing.linear,
         useNativeDriver: true,
       }),
@@ -102,48 +113,59 @@ const VwoopPage: React.FC = () => {
     rotateAnimation.start();
 
     return () => {
+      // Clean up animations
       pulseAnim.setValue(0);
       rotateAnim.setValue(0);
-      rippleAnim1.setValue(0);
-      rippleAnim2.setValue(0);
-      rippleAnim3.setValue(0);
-      nfcDiscoverySubscription.remove();
-      // Release sound resource
-      rippleSound.current?.release();
+      rippleAnim.setValue(0);
+      // Remove event listeners
+      subscriptions.forEach(subscription => subscription.remove());
+      appStateSubscription.remove();
     };
-  }, [pulseAnim, rotateAnim, rippleAnim1, rippleAnim2, rippleAnim3]);
+  }, [pulseAnim, rotateAnim, rippleAnim]);
 
   const startRippleAnimation = () => {
-    // Reset all ripple animations
-    rippleAnim1.setValue(0);
-    rippleAnim2.setValue(0);
-    rippleAnim3.setValue(0);
-
-    // Create ripple animations with different delays
-    const createRippleAnimation = (anim: Animated.Value, delay: number) => {
-      return Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 1000,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(anim, {
-          toValue: 0,
-          duration: 500,
-          easing: Easing.in(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]);
-    };
-
-    // Start all ripple animations
-    Animated.parallel([
-      createRippleAnimation(rippleAnim1, 0),
-      createRippleAnimation(rippleAnim2, 200),
-      createRippleAnimation(rippleAnim3, 400),
+    rippleAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(rippleAnim, {
+        toValue: 1,
+        duration: 1000,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(rippleAnim, {
+        toValue: 0,
+        duration: 500,
+        easing: Easing.in(Easing.ease),
+        useNativeDriver: true,
+      }),
     ]).start();
+  };
+
+  const handleVwoopPress = async () => {
+    if (Platform.OS === 'android' && isNfcSupported && isNfcEnabled && isAppActive) {
+      try {
+        const newState = await NfcModule.toggleHce();
+        setIsHceEnabled(newState);
+      } catch (error) {
+        console.error('Error toggling HCE:', error);
+      }
+    }
+  };
+
+  const getStatusMessage = () => {
+    if (!isNfcSupported) {
+      return 'NFC is not supported on this device';
+    }
+    if (!isNfcEnabled) {
+      return 'Please enable NFC in your device settings';
+    }
+    if (!isAppActive) {
+      return 'App is in background - HCE is disabled';
+    }
+    if (isHceEnabled) {
+      return 'HCE Mode Active - Hold near another phone to connect';
+    }
+    return 'Touch to enable HCE mode';
   };
 
   const pulseStyle = {
@@ -151,13 +173,13 @@ const VwoopPage: React.FC = () => {
       {
         scale: pulseAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: [1, 1.3],
+          outputRange: [1, 1.2],
         }),
       },
     ],
     opacity: pulseAnim.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.3, 0.6],
+      outputRange: [0.5, 1],
     }),
   };
 
@@ -172,55 +194,59 @@ const VwoopPage: React.FC = () => {
     ],
   };
 
-  // Create ripple styles with different scales and opacities
-  const createRippleStyle = (anim: Animated.Value, scaleRange: [number, number], opacityRange: [number, number, number]) => ({
+  const rippleStyle = {
     transform: [
       {
-        scale: anim.interpolate({
+        scale: rippleAnim.interpolate({
           inputRange: [0, 1],
-          outputRange: scaleRange,
+          outputRange: [1, 2],
         }),
       },
     ],
-    opacity: anim.interpolate({
-      inputRange: [0, 0.3, 1],
-      outputRange: opacityRange,
+    opacity: rippleAnim.interpolate({
+      inputRange: [0, 0.5, 1],
+      outputRange: [0.5, 0.8, 0],
     }),
-  });
-
-  const rippleStyle1 = createRippleStyle(rippleAnim1, [1, 2.2], [0.8, 0.5, 0]);
-  const rippleStyle2 = createRippleStyle(rippleAnim2, [1, 2.4], [0.7, 0.4, 0]);
-  const rippleStyle3 = createRippleStyle(rippleAnim3, [1, 2.6], [0.6, 0.3, 0]);
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Vwoop!</Text>
         <Text style={styles.subtitle}>
-          {isConnected
-            ? 'Connected!'
-            : 'Hold your phone near another user\'s phone to connect'}
+          {isHceEnabled
+            ? 'HCE Mode: Ready to connect'
+            : 'Touch your phone with another user to connect'}
         </Text>
 
         <View style={styles.animationContainer}>
           <Animated.View style={[styles.pulseCircle, pulseStyle]} />
-          <Animated.View style={[styles.rippleCircle, rippleStyle1]} />
-          <Animated.View style={[styles.rippleCircle, rippleStyle2]} />
-          <Animated.View style={[styles.rippleCircle, rippleStyle3]} />
-          <Animated.View style={[styles.rotatingCircle, rotateStyle]}>
-            <View style={[styles.innerCircle, isConnected && styles.connectedInnerCircle]}>
-              <Text style={styles.vwoopText}>V</Text>
-            </View>
-          </Animated.View>
+          <Animated.View style={[styles.rippleCircle, rippleStyle]} />
+          <TouchableOpacity
+            onPress={handleVwoopPress}
+            disabled={!isNfcSupported || !isNfcEnabled || !isAppActive}>
+            <Animated.View style={[styles.rotatingCircle, rotateStyle]}>
+              <View style={[styles.innerCircle, isHceEnabled && styles.activeInnerCircle]}>
+                <Text style={styles.vwoopText}>V</Text>
+              </View>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
 
-        <Text style={styles.instruction}>
-          {isConnected
-            ? 'Connection successful!'
-            : 'Ready to connect - Hold near another phone to exchange contact information'}
-        </Text>
-        {!isNfcEnabled && isNfcSupported && (
-          <Text style={styles.warning}>Please enable NFC in your device settings</Text>
+        <Text style={styles.instruction}>{getStatusMessage()}</Text>
+        
+        {/* Debug information */}
+        {__DEV__ && (
+          <View style={styles.debugInfo}>
+            <Text style={styles.debugText}>App Active: {isAppActive ? 'Yes' : 'No'}</Text>
+            <Text style={styles.debugText}>HCE Enabled: {isHceEnabled ? 'Yes' : 'No'}</Text>
+            {lastHceCommand && (
+              <Text style={styles.debugText}>Last Command: {lastHceCommand}</Text>
+            )}
+            {lastHceDeactivation !== null && (
+              <Text style={styles.debugText}>Last Deactivation: {lastHceDeactivation}</Text>
+            )}
+          </View>
         )}
       </View>
     </View>
@@ -264,7 +290,7 @@ const styles = StyleSheet.create({
     borderRadius: width * 0.3,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   rippleCircle: {
     position: 'absolute',
@@ -273,7 +299,7 @@ const styles = StyleSheet.create({
     borderRadius: width * 0.3,
     backgroundColor: 'rgba(128, 90, 213, 0.2)',
     borderWidth: 2,
-    borderColor: 'rgba(128, 90, 213, 0.6)',
+    borderColor: 'rgba(128, 90, 213, 0.4)',
   },
   rotatingCircle: {
     width: width * 0.4,
@@ -293,11 +319,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  connectedInnerCircle: {
+  activeInnerCircle: {
     backgroundColor: '#6B46C1',
     borderWidth: 2,
     borderColor: '#9F7AEA',
-    transform: [{scale: 1.1}],
   },
   vwoopText: {
     fontSize: 40,
@@ -311,11 +336,16 @@ const styles = StyleSheet.create({
     maxWidth: width * 0.8,
     lineHeight: 24,
   },
-  warning: {
-    fontSize: 14,
-    color: '#FC8181',
-    textAlign: 'center',
-    marginTop: 16,
+  debugInfo: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    borderRadius: 8,
+  },
+  debugText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 12,
+    marginBottom: 4,
   },
 });
 
