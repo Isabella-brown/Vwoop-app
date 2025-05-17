@@ -11,39 +11,38 @@ import {
   NativeModules,
   Platform,
 } from 'react-native';
-// @ts-ignore
-import Sound from 'react-native-sound';
+import { Audio } from 'expo-av';
 
 const {width, height} = Dimensions.get('window');
 const {NfcModule} = NativeModules;
 
-// Enable playback in silence mode
-Sound.setCategory('Playback');
-
 const VwoopPage: React.FC = () => {
   const pulseAnim = useRef(new Animated.Value(0)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
-  // Create multiple ripple animations
   const rippleAnim1 = useRef(new Animated.Value(0)).current;
   const rippleAnim2 = useRef(new Animated.Value(0)).current;
   const rippleAnim3 = useRef(new Animated.Value(0)).current;
   const [isNfcSupported, setIsNfcSupported] = useState(false);
   const [isNfcEnabled, setIsNfcEnabled] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const rippleSound = useRef<Sound | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
 
   useEffect(() => {
     // Initialize sound
-    rippleSound.current = new Sound('ripple_audio.mp3', Platform.select({
-      ios: Sound.MAIN_BUNDLE,
-      android: Sound.DOCUMENT, // For Android, we'll use the assets directory
-    }), (error: Error | null) => {
-      if (error) {
+    const loadSound = async () => {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/audio/ripple_audio.mp3'),
+          { shouldPlay: false }
+        );
+        soundRef.current = sound;
+        console.log('Sound loaded successfully');
+      } catch (error) {
         console.log('Failed to load sound', error);
-        return;
       }
-      console.log('Sound loaded successfully');
-    });
+    };
+
+    loadSound();
 
     // Check NFC support and status
     if (Platform.OS === 'android') {
@@ -61,20 +60,19 @@ const VwoopPage: React.FC = () => {
     const eventEmitter = new NativeEventEmitter(NfcModule);
     const nfcDiscoverySubscription = eventEmitter.addListener(
       'onNfcDiscovered',
-      () => {
+      async () => {
         // Start ripple animation when NFC is discovered
         startRippleAnimation();
         setIsConnected(true);
         
-        // Play sound effect with proper error handling
-        if (rippleSound.current) {
-          rippleSound.current.play((success: boolean) => {
-            if (!success) {
-              console.log('Sound playback failed');
-            }
-          });
-        } else {
-          console.log('Sound not initialized');
+        // Play sound effect
+        try {
+          if (soundRef.current) {
+            await soundRef.current.setPositionAsync(0);
+            await soundRef.current.playAsync();
+          }
+        } catch (error) {
+          console.log('Failed to play sound', error);
         }
         
         // Reset connection state after animation
@@ -113,14 +111,16 @@ const VwoopPage: React.FC = () => {
     rotateAnimation.start();
 
     return () => {
+      // Cleanup
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
       pulseAnim.setValue(0);
       rotateAnim.setValue(0);
       rippleAnim1.setValue(0);
       rippleAnim2.setValue(0);
       rippleAnim3.setValue(0);
       nfcDiscoverySubscription.remove();
-      // Release sound resource
-      rippleSound.current?.release();
     };
   }, [pulseAnim, rotateAnim, rippleAnim1, rippleAnim2, rippleAnim3]);
 
