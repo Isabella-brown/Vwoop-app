@@ -5,126 +5,161 @@
  * @format
  */
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useState} from 'react';
 import {
-  ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
-  useColorScheme,
   View,
+  Image,
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  Alert,
+  TouchableOpacity,
+  Text,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
+import EventCard from './components/EventCard';
+import Account from './components/Account';
+import VwoopPage from './components/VwoopPage';
+import MenuBar, {Screen} from './components/MenuBar';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+const {width} = Dimensions.get('window');
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+// Sample event data
+const sampleEvents = [
+  {
+    id: '1',
+    title: 'Community Garden Cleanup',
+    date: 'Saturday, March 23, 2024 • 10:00 AM',
+    location: 'Central Park Community Garden',
+    description: 'Join us for a morning of gardening and community building. We\'ll be planting spring vegetables and cleaning up the garden beds. Tools and refreshments provided!',
+    imageUrl: 'https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?w=800',
+    currentAttendees: 12,
+    maxAttendees: 20,
+  },
+  {
+    id: '2',
+    title: 'Local Art Exhibition',
+    date: 'Sunday, March 24, 2024 • 2:00 PM',
+    location: 'Downtown Art Gallery',
+    description: 'Experience the work of local artists in our monthly exhibition. Meet the artists, enjoy live music, and participate in interactive art workshops.',
+    imageUrl: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?w=800',
+    currentAttendees: 45,
+    maxAttendees: 50,
+  },
+  {
+    id: '3',
+    title: 'Neighborhood Book Club',
+    date: 'Tuesday, March 26, 2024 • 7:00 PM',
+    location: 'Community Library',
+    description: 'This month we\'re discussing "The Midnight Library" by Matt Haig. New members welcome! Light refreshments will be served.',
+    imageUrl: 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=800',
+    currentAttendees: 8,
+    maxAttendees: 15,
+  },
+];
 
 function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+  const [currentScreen, setCurrentScreen] = useState<Screen>('home');
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  const handleSignUp = (eventId: string) => {
+    Alert.alert(
+      'Sign Up Successful',
+      'You have been registered for this event!',
+      [{text: 'OK'}],
+    );
   };
 
-  /*
-   * To keep the template simple and small we're adding padding to prevent view
-   * from rendering under the System UI.
-   * For bigger apps the recommendation is to use `react-native-safe-area-context`:
-   * https://github.com/AppAndFlow/react-native-safe-area-context
-   *
-   * You can read more about it here:
-   * https://github.com/react-native-community/discussions-and-proposals/discussions/827
-   */
-  const safePadding = '5%';
+  const renderContent = () => {
+    switch (currentScreen) {
+      case 'home':
+        return (
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            showsVerticalScrollIndicator={false}>
+            {sampleEvents.map(event => (
+              <EventCard
+                key={event.id}
+                title={event.title}
+                date={event.date}
+                location={event.location}
+                description={event.description}
+                imageUrl={event.imageUrl}
+                currentAttendees={event.currentAttendees}
+                maxAttendees={event.maxAttendees}
+                onSignUp={() => handleSignUp(event.id)}
+              />
+            ))}
+          </ScrollView>
+        );
+      case 'account':
+        return <Account />;
+      case 'vwoop':
+        return <VwoopPage />;
+    }
+  };
 
   return (
-    <View style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        style={backgroundStyle}>
-        <View style={{paddingRight: safePadding}}>
-          <Header/>
-        </View>
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-            paddingHorizontal: safePadding,
-            paddingBottom: safePadding,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <LinearGradient
+        colors={['#6B46C1', '#805AD5', '#9F7AEA']}
+        style={styles.gradient}>
+        {renderContent()}
+        <MenuBar
+          currentScreen={currentScreen}
+          onScreenChange={setCurrentScreen}
+        />
+      </LinearGradient>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
   },
-  sectionTitle: {
-    fontSize: 24,
+  gradient: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  menuBar: {
+    height: 80,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  menuItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
     fontWeight: '600',
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  menuTextActive: {
+    color: 'white',
   },
-  highlight: {
-    fontWeight: '700',
+  logo: {
+    width: width * 0.3,
+    height: 40,
   },
 });
 
