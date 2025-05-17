@@ -10,7 +10,6 @@ import {
   NativeEventEmitter,
   NativeModules,
   Platform,
-  AppState,
 } from 'react-native';
 
 const {width, height} = Dimensions.get('window');
@@ -23,9 +22,6 @@ const VwoopPage: React.FC = () => {
   const [isHceEnabled, setIsHceEnabled] = useState(false);
   const [isNfcSupported, setIsNfcSupported] = useState(false);
   const [isNfcEnabled, setIsNfcEnabled] = useState(false);
-  const [isAppActive, setIsAppActive] = useState(true);
-  const [lastHceCommand, setLastHceCommand] = useState<string | null>(null);
-  const [lastHceDeactivation, setLastHceDeactivation] = useState<number | null>(null);
 
   useEffect(() => {
     // Check NFC support and status
@@ -42,45 +38,16 @@ const VwoopPage: React.FC = () => {
 
     // Set up event listeners
     const eventEmitter = new NativeEventEmitter(NfcModule);
-    const subscriptions = [
-      // HCE state changes
-      eventEmitter.addListener('onHceStateChanged', (enabled: boolean) => {
-        console.log('HCE state changed:', enabled);
+    const hceStateSubscription = eventEmitter.addListener(
+      'onHceStateChanged',
+      (enabled: boolean) => {
         setIsHceEnabled(enabled);
         if (enabled) {
+          // Start ripple animation when HCE is enabled
           startRippleAnimation();
         }
-      }),
-      // App state changes from native
-      eventEmitter.addListener('onAppStateChanged', (active: boolean) => {
-        console.log('App state changed from native:', active);
-        setIsAppActive(active);
-        if (!active && isHceEnabled) {
-          // HCE will be automatically disabled by native code
-          setIsHceEnabled(false);
-        }
-      }),
-      // HCE command received
-      eventEmitter.addListener('onHceCommandReceived', (command: string) => {
-        console.log('HCE command received:', command);
-        setLastHceCommand(command);
-        // Start ripple animation on command received
-        startRippleAnimation();
-      }),
-      // HCE deactivated
-      eventEmitter.addListener('onHceDeactivated', (reason: number) => {
-        console.log('HCE deactivated:', reason);
-        setLastHceDeactivation(reason);
-        setIsHceEnabled(false);
-      }),
-    ];
-
-    // Set up AppState listener for React Native app state
-    const appStateSubscription = AppState.addEventListener('change', nextAppState => {
-      const isActive = nextAppState === 'active';
-      console.log('App state changed from RN:', nextAppState);
-      setIsAppActive(isActive);
-    });
+      },
+    );
 
     // Create pulse animation
     const pulseAnimation = Animated.sequence([
@@ -113,13 +80,10 @@ const VwoopPage: React.FC = () => {
     rotateAnimation.start();
 
     return () => {
-      // Clean up animations
       pulseAnim.setValue(0);
       rotateAnim.setValue(0);
       rippleAnim.setValue(0);
-      // Remove event listeners
-      subscriptions.forEach(subscription => subscription.remove());
-      appStateSubscription.remove();
+      hceStateSubscription.remove();
     };
   }, [pulseAnim, rotateAnim, rippleAnim]);
 
@@ -142,7 +106,7 @@ const VwoopPage: React.FC = () => {
   };
 
   const handleVwoopPress = async () => {
-    if (Platform.OS === 'android' && isNfcSupported && isNfcEnabled && isAppActive) {
+    if (Platform.OS === 'android' && isNfcSupported && isNfcEnabled) {
       try {
         const newState = await NfcModule.toggleHce();
         setIsHceEnabled(newState);
@@ -150,22 +114,6 @@ const VwoopPage: React.FC = () => {
         console.error('Error toggling HCE:', error);
       }
     }
-  };
-
-  const getStatusMessage = () => {
-    if (!isNfcSupported) {
-      return 'NFC is not supported on this device';
-    }
-    if (!isNfcEnabled) {
-      return 'Please enable NFC in your device settings';
-    }
-    if (!isAppActive) {
-      return 'App is in background - HCE is disabled';
-    }
-    if (isHceEnabled) {
-      return 'HCE Mode Active - Hold near another phone to connect';
-    }
-    return 'Touch to enable HCE mode';
   };
 
   const pulseStyle = {
@@ -224,7 +172,7 @@ const VwoopPage: React.FC = () => {
           <Animated.View style={[styles.rippleCircle, rippleStyle]} />
           <TouchableOpacity
             onPress={handleVwoopPress}
-            disabled={!isNfcSupported || !isNfcEnabled || !isAppActive}>
+            disabled={!isNfcSupported || !isNfcEnabled}>
             <Animated.View style={[styles.rotatingCircle, rotateStyle]}>
               <View style={[styles.innerCircle, isHceEnabled && styles.activeInnerCircle]}>
                 <Text style={styles.vwoopText}>V</Text>
@@ -233,20 +181,13 @@ const VwoopPage: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.instruction}>{getStatusMessage()}</Text>
-        
-        {/* Debug information */}
-        {__DEV__ && (
-          <View style={styles.debugInfo}>
-            <Text style={styles.debugText}>App Active: {isAppActive ? 'Yes' : 'No'}</Text>
-            <Text style={styles.debugText}>HCE Enabled: {isHceEnabled ? 'Yes' : 'No'}</Text>
-            {lastHceCommand && (
-              <Text style={styles.debugText}>Last Command: {lastHceCommand}</Text>
-            )}
-            {lastHceDeactivation !== null && (
-              <Text style={styles.debugText}>Last Deactivation: {lastHceDeactivation}</Text>
-            )}
-          </View>
+        <Text style={styles.instruction}>
+          {isHceEnabled
+            ? 'HCE Mode Active - Hold near another phone to connect'
+            : 'Hold your phone near another user\'s phone to exchange contact information'}
+        </Text>
+        {!isNfcEnabled && isNfcSupported && (
+          <Text style={styles.warning}>Please enable NFC in your device settings</Text>
         )}
       </View>
     </View>
@@ -336,16 +277,11 @@ const styles = StyleSheet.create({
     maxWidth: width * 0.8,
     lineHeight: 24,
   },
-  debugInfo: {
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    borderRadius: 8,
-  },
-  debugText: {
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 12,
-    marginBottom: 4,
+  warning: {
+    fontSize: 14,
+    color: '#FC8181',
+    textAlign: 'center',
+    marginTop: 16,
   },
 });
 
