@@ -1,7 +1,6 @@
 {
   "extends": "@react-native/typescript-config/tsconfig.json",
    "compilerOptions": {
-    // ...existing code...
     "typeRoots": ["./node_modules/@types", "./"]
   },
   "include": ["**/*.ts", "**/*.tsx", "env.d.ts"]
